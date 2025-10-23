@@ -249,3 +249,4 @@ st.markdown(
     f"<p style='color: {C['muted']}; text-align: center; font-size: 10px;'>© 2025 OwoNow Ltd. All rights reserved.</p>",
     unsafe_allow_html=True
 )
+#final
