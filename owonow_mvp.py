@@ -6,7 +6,7 @@ import os
 
 # ---------- Page config ----------
 st.set_page_config(
-    page_title="OwoNow",
+    page_title="",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
