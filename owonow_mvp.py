@@ -1,5 +1,4 @@
 # OwoNow demo app (theme-aware + fixed NG phone validation)
-
 import re
 import os
 import calendar
@@ -37,45 +36,16 @@ def get_palette():
             "accent": "#008753",
             "warn": "#D65100",
         }
-
 C = get_palette()
-
 st.markdown(
     f"""
     <style>
-        .owonow-title {{
-            color: {C["accent"]};
-            text-align: center;
-            font-size: 32px;
-            font-weight: 700;
-            margin: 0.25rem 0 0.5rem 0;
-        }}
-        .owonow-sub {{
-            color: {C["muted"]};
-            text-align: center;
-            font-size: 14px;
-            margin-top: -0.25rem;
-        }}
-        .owonow-h3 {{
-            color: {C["text"]};
-            font-size: 22px;
-            font-weight: 700;
-            margin-top: 1rem;
-        }}
-        .owonow-h4 {{
-            color: {C["text"]};
-            font-size: 18px;
-            font-weight: 700;
-            margin-top: 0.75rem;
-        }}
-        .owonow-muted {{
-            color: {C["muted"]};
-            font-size: 13px;
-            margin: 0.2rem 0;
-        }}
-        .owonow-ok {{
-            color: {C["text"]};
-        }}
+        .owonow-title {{ color: {C["accent"]}; text-align: center; font-size: 32px; font-weight: 700; margin: 0.25rem 0 0.5rem 0; }}
+        .owonow-sub {{ color: {C["muted"]}; text-align: center; font-size: 14px; margin-top: -0.25rem; }}
+        .owonow-h3 {{ color: {C["text"]}; font-size: 22px; font-weight: 700; margin-top: 1rem; }}
+        .owonow-h4 {{ color: {C["text"]}; font-size: 18px; font-weight: 700; margin-top: 0.75rem; }}
+        .owonow-muted {{ color: {C["muted"]}; font-size: 13px; margin: 0.2rem 0; }}
+        .owonow-ok {{ color: {C["text"]}; }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -86,31 +56,20 @@ LOGO_PATH = "owonow_logo.png"
 TX_CSV = "owonow_transactions.csv"
 
 # ---------- Phone helpers ----------
-# Accept:
-# - 0803XXXXXXXX (11 digits, starts with 0)
-# - +234803XXXXXXXX (country code +234 then 10 digits, no leading 0)
-# - 234803XXXXXXXX (same as above without '+')
-LOCAL_RE   = re.compile(r"^0[1-9]\d{9}$")
-INTL_RE    = re.compile(r"^(?:\+?234) [1-9]\d{9}$".replace(" ", ""))  # remove the space for readability
-INTL_RAW   = re.compile(r"^234[1-9]\d{9}$")
-
+LOCAL_RE = re.compile(r"^0[1-9]\d{9}$")
+INTL_RE = re.compile(r"^(?:\+?234)[1-9]\d{9}$")  # Fixed space removal
+INTL_RAW = re.compile(r"^234[1-9]\d{9}$")
 def normalize_phone(s: str) -> str:
-    """Strip spaces, dashes, parentheses. Return canonical formats:
-       0XXXXXXXXXX or +234XXXXXXXXXX. Return '' if invalid."""
     if not s:
         return ""
-    raw = re.sub(r"[^\d+]", "", s.strip())  # keep digits and optional leading +
-    # Local 11-digit starting 0
+    raw = re.sub(r"[^\d+]", "", s.strip())
     if LOCAL_RE.match(raw):
         return raw
-    # +234 then 10 digits, first of those 10 not zero
     if INTL_RE.match(raw):
         return raw if raw.startswith("+") else f"+{raw}"
-    # 234 then 10 digits
     if INTL_RAW.match(raw):
         return f"+{raw}"
     return ""
-
 def is_valid_ng_phone(s: str) -> bool:
     return normalize_phone(s) != ""
 
@@ -123,13 +82,11 @@ def load_tx_history() -> list[dict]:
         except Exception:
             return []
     return []
-
 def save_tx_history(history: list[dict]) -> None:
     try:
         pd.DataFrame(history).to_csv(TX_CSV, index=False)
     except Exception:
         pass
-
 def money(n: float) -> str:
     return f"₦{n:,.0f}"
 
@@ -140,11 +97,12 @@ else:
     st.markdown("<div class='owonow-title'>OwoNow</div>", unsafe_allow_html=True)
     st.markdown("<div class='owonow-sub'>Owo in your pocket, now</div>", unsafe_allow_html=True)
     st.markdown("<div class='owonow-muted'>Tip: add <code>owonow_logo.png</code> for your logo.</div>", unsafe_allow_html=True)
+st.markdown("<div class='owonow-muted'>Demo only, not CBN-regulated.</div>", unsafe_allow_html=True)
 
 # ---------- State ----------
-st.session_state.setdefault("auth_step", "signin")  # signin -> otp -> dashboard
+st.session_state.setdefault("auth_step", "signin")
 st.session_state.setdefault("phone", "")
-st.session_state.setdefault("otp_expected", "123456")  # demo
+st.session_state.setdefault("otp_expected", "123456")
 st.session_state.setdefault("history", load_tx_history())
 
 # ---------- Auth: Sign in ----------
@@ -185,33 +143,29 @@ elif st.session_state.auth_step == "otp":
 # ---------- Dashboard ----------
 elif st.session_state.auth_step == "dashboard":
     st.header("Dashboard")
-
+    st.markdown("<br>", unsafe_allow_html=True)  # Add spacing
     # Sidebar policy controls for EWA-only demo
     st.sidebar.header("EWA Policy")
     cap_pct = st.sidebar.number_input("Cap percent of earned", 0.0, 100.0, 50.0, 5.0)
     hard_cap = st.sidebar.number_input("Hard cap per month (₦)", 0, 500000, 50000, 5000)
     monthly_base = st.sidebar.number_input("Monthly base salary (₦)", 10000, 1000000, 40000, 5000)
-
     # Date math
     now = datetime.now()
     y, m = now.year, now.month
     dim = calendar.monthrange(y, m)[1]
     worked = min(now.day, dim)
     payday = datetime(y, m, dim)
-
     # Accrual and available
     accrued = (monthly_base / dim) * worked
     available = min(accrued * (cap_pct / 100.0), hard_cap)
-
     st.markdown(f"<div class='owonow-h3'>Available Owo: <span class='owonow-ok'>{money(available)}</span></div>", unsafe_allow_html=True)
     st.progress(worked / dim)
     st.markdown(f"<div class='owonow-muted'>Next paycheck: {payday.strftime('%B %d, %Y')}</div>", unsafe_allow_html=True)
-
     st.subheader("Withdraw your Owo")
+    st.markdown("<br>", unsafe_allow_html=True)  # Add spacing
     max_withdraw = int(available)
     disabled = max_withdraw <= 0
     step = 500 if max_withdraw >= 500 else 100 if max_withdraw > 0 else 0
-
     amount = st.slider(
         "Amount (₦)",
         0,
@@ -220,20 +174,18 @@ elif st.session_state.auth_step == "dashboard":
         disabled=disabled
     )
     method = st.selectbox("Payout method", ["OPay (Instant)", "Paga (Instant)", "Bank transfer (1 day)"])
-
     if st.button("Withdraw now", disabled=disabled):
         if amount and amount > 0:
             rec = {"date": now.strftime("%Y-%m-%d %H:%M"), "amount": money(amount), "method": method}
             st.session_state.history.append(rec)
             save_tx_history(st.session_state.history)
             st.success(f"{money(amount)} sent to {method}. Will reconcile on {payday.strftime('%B %d, %Y')}.")
-
     st.subheader("Transaction history")
+    st.markdown("<br>", unsafe_allow_html=True)  # Add spacing
     if st.session_state.history:
         st.dataframe(pd.DataFrame(st.session_state.history), hide_index=True, use_container_width=True)
     else:
         st.markdown("<div class='owonow-muted'>No withdrawals yet.</div>", unsafe_allow_html=True)
-
     c1, c2 = st.columns(2)
     if c1.button("Sign out"):
         st.session_state.clear()
@@ -246,7 +198,6 @@ elif st.session_state.auth_step == "dashboard":
 
 # ---------- Footer ----------
 st.markdown(
-    f"<p style='color: {C['muted']}; text-align: center; font-size: 10px;'>© 2025 OwoNow Ltd. All rights reserved.</p>",
+    f"<p style='color: {C['muted']}; text-align: center; font-size: 10px;'>© 2025 OwoNow Ltd. All rights reserved. CBN-Compliant (Demo).</p>",
     unsafe_allow_html=True
 )
-#final
