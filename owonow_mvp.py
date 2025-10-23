@@ -121,10 +121,16 @@ elif st.session_state.auth_step == "dashboard":
     days_worked = min(now.day, days_in_month)
     next_payday = datetime(year, month, days_in_month)
 
+    # Policy defaults for demo
+    st.sidebar.header("EWA Policy Controls")
+    cap_pct = st.sidebar.number_input("Cap percent of earned", min_value=0.0, max_value=100.0, value=50.0, step=5.0)
+    hard_cap = st.sidebar.number_input("Hard cap per month (₦)", min_value=0, value=50_000, step=5_000)
+    monthly_base = st.sidebar.number_input("Monthly base salary (₦)", min_value=10_000, value=40_000, step=5_000)
+
     # Earnings model
-    monthly_base = 40_000  # demo
     accrued = (monthly_base / days_in_month) * days_worked
-    available = min(accrued * 0.5, 50_000)
+    cap_amount = accrued * (cap_pct / 100.0)
+    available = min(cap_amount, hard_cap)
 
     # Top card
     st.markdown(f"<h3 style='color: #1A1A1A;'>Available Owo: {money(available)}</h3>", unsafe_allow_html=True)
@@ -132,6 +138,47 @@ elif st.session_state.auth_step == "dashboard":
     st.markdown(f"<p style='color: #666;'>Next paycheck: {next_payday.strftime('%B %d, %Y')}</p>", unsafe_allow_html=True)
     st.markdown("<p style='color: #008753; font-size: 12px;'>Prototype, CBN-friendly | No fees</p>", unsafe_allow_html=True)
     st.markdown("<p style='color: #666; font-size: 10px;'>Registered: OwoNow Ltd (Pending CAC approval)</p>", unsafe_allow_html=True)
+
+    # Policy and Metrics Panel
+    with st.expander("EWA policy and metrics"):
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Accrued this month", money(accrued))
+        c2.metric("Cap percent", f"{cap_pct:.0f}%")
+        c3.metric("Hard cap", money(hard_cap))
+        st.caption("Rules: daily accrual, capped by percent of earned and a monthly hard cap. Reconciled on payday.")
+
+    # Unit economics panel
+    with st.expander("Employer pricing and float estimator"):
+        colA, colB = st.columns(2)
+        with colA:
+            employers = st.number_input("Employers", min_value=1, value=20, step=1)
+            avg_emp_per_employer = st.number_input("Avg employees per employer", min_value=10, value=250, step=10)
+            sub_fee = st.number_input("Subscription per employee per month (₦)", min_value=100, value=300, step=50)
+        with colB:
+            adoption = st.number_input("Percent of employees who opt in", min_value=0.0, max_value=100.0, value=60.0, step=5.0)
+            utilization = st.number_input("Avg percent of cap used", min_value=0.0, max_value=100.0, value=70.0, step=5.0)
+            outstanding_ratio = st.number_input("Avg outstanding days fraction", min_value=0.0, max_value=1.0, value=0.5, step=0.1,
+                                                help="0.5 means on average funds are outstanding for half the month")
+
+        total_employees = employers * avg_emp_per_employer
+        active_users = int(total_employees * (adoption / 100.0))
+        monthly_revenue = total_employees * sub_fee
+
+        # Very simple float model for demo
+        # Float ≈ active_users * monthly_base * (cap_pct/100) * (utilization/100) * outstanding_ratio
+        est_float = active_users * monthly_base * (cap_pct / 100.0) * (utilization / 100.0) * outstanding_ratio
+
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Employees covered", f"{total_employees:,}")
+        k2.metric("Active users", f"{active_users:,}")
+        k3.metric("Monthly revenue", money(monthly_revenue))
+
+        k4, k5, k6 = st.columns(3)
+        k4.metric("Cap used", f"{utilization:.0f}% of cap")
+        k5.metric("Est float needed", money(est_float))
+        k6.metric("ARPU", money(monthly_revenue / total_employees if total_employees else 0))
+
+        st.caption("This is a demo estimator. In production, model by cohort, pay cadence, and withdrawal timing.")
 
     # Withdraw
     st.markdown("<h4 style='color: #1A1A1A;'>Withdraw your Owo</h4>", unsafe_allow_html=True)
