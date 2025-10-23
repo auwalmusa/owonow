@@ -1,3 +1,5 @@
+# OwoNow demo app (theme-aware + fixed NG phone validation)
+
 import re
 import os
 import calendar
@@ -19,14 +21,13 @@ def get_palette():
         base = st.get_option("theme.base") or "light"
     except Exception:
         pass
-
     if base == "dark":
         return {
-            "title": "#EAF5EE",     # light mint/white
-            "text": "#ECECEC",       # primary text
-            "muted": "#B0B3B8",      # secondary text
-            "accent": "#00A86B",     # OwoNow green
-            "warn": "#FF6200"
+            "title": "#EAF5EE",
+            "text": "#ECECEC",
+            "muted": "#B0B3B8",
+            "accent": "#00A86B",
+            "warn": "#FF6200",
         }
     else:
         return {
@@ -34,7 +35,7 @@ def get_palette():
             "text": "#1A1A1A",
             "muted": "#555555",
             "accent": "#008753",
-            "warn": "#D65100"
+            "warn": "#D65100",
         }
 
 C = get_palette()
@@ -80,28 +81,40 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------- Assets / logo ----------
+# ---------- Assets ----------
 LOGO_PATH = "owonow_logo.png"
 TX_CSV = "owonow_transactions.csv"
-PHONE_REGEX = re.compile(r"^(?:0\d{{10}}|(?:\+?234)\d{{10}})$")
 
-if os.path.exists(LOGO_PATH):
-    st.image(LOGO_PATH, width=150, caption="OwoNow - Owo in your pocket, now")
-else:
-    st.markdown(f"<div class='owonow-title'>OwoNow</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='owonow-sub'>Owo in your pocket, now</div>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='owonow-muted'>Tip: add <code>owonow_logo.png</code> for your logo.</div>",
-        unsafe_allow_html=True,
-    )
+# ---------- Phone helpers ----------
+# Accept:
+# - 0803XXXXXXXX (11 digits, starts with 0)
+# - +234803XXXXXXXX (country code +234 then 10 digits, no leading 0)
+# - 234803XXXXXXXX (same as above without '+')
+LOCAL_RE   = re.compile(r"^0[1-9]\d{9}$")
+INTL_RE    = re.compile(r"^(?:\+?234) [1-9]\d{9}$".replace(" ", ""))  # remove the space for readability
+INTL_RAW   = re.compile(r"^234[1-9]\d{9}$")
 
-# ---------- Helpers ----------
-def is_valid_ng_phone(s: str) -> bool:
+def normalize_phone(s: str) -> str:
+    """Strip spaces, dashes, parentheses. Return canonical formats:
+       0XXXXXXXXXX or +234XXXXXXXXXX. Return '' if invalid."""
     if not s:
-        return False
-    s = s.strip().replace(" ", "")
-    return bool(PHONE_REGEX.match(s))
+        return ""
+    raw = re.sub(r"[^\d+]", "", s.strip())  # keep digits and optional leading +
+    # Local 11-digit starting 0
+    if LOCAL_RE.match(raw):
+        return raw
+    # +234 then 10 digits, first of those 10 not zero
+    if INTL_RE.match(raw):
+        return raw if raw.startswith("+") else f"+{raw}"
+    # 234 then 10 digits
+    if INTL_RAW.match(raw):
+        return f"+{raw}"
+    return ""
 
+def is_valid_ng_phone(s: str) -> bool:
+    return normalize_phone(s) != ""
+
+# ---------- CSV helpers ----------
 def load_tx_history() -> list[dict]:
     if os.path.exists(TX_CSV):
         try:
@@ -120,6 +133,14 @@ def save_tx_history(history: list[dict]) -> None:
 def money(n: float) -> str:
     return f"₦{n:,.0f}"
 
+# ---------- Header / Branding ----------
+if os.path.exists(LOGO_PATH):
+    st.image(LOGO_PATH, width=150, caption="OwoNow - Owo in your pocket, now")
+else:
+    st.markdown("<div class='owonow-title'>OwoNow</div>", unsafe_allow_html=True)
+    st.markdown("<div class='owonow-sub'>Owo in your pocket, now</div>", unsafe_allow_html=True)
+    st.markdown("<div class='owonow-muted'>Tip: add <code>owonow_logo.png</code> for your logo.</div>", unsafe_allow_html=True)
+
 # ---------- State ----------
 st.session_state.setdefault("auth_step", "signin")  # signin -> otp -> dashboard
 st.session_state.setdefault("phone", "")
@@ -128,13 +149,18 @@ st.session_state.setdefault("history", load_tx_history())
 
 # ---------- Auth: Sign in ----------
 if st.session_state.auth_step == "signin":
-    st.markdown(f"<div class='owonow-title'>OwoNow</div>", unsafe_allow_html=True)
-    phone = st.text_input("Enter your phone number", key="phone_input", placeholder="0803xxxxxxx or +234803xxxxxxx")
+    st.markdown("<div class='owonow-title'>OwoNow</div>", unsafe_allow_html=True)
+    phone_input = st.text_input(
+        "Enter your phone number",
+        key="phone_input",
+        placeholder="0803xxxxxxx, +234803xxxxxxx, or 234803xxxxxxx",
+    )
     if st.button("Sign in"):
-        if not is_valid_ng_phone(phone):
+        norm = normalize_phone(phone_input)
+        if not norm:
             st.error("Please enter a valid Nigerian phone number.")
         else:
-            st.session_state.phone = phone.strip()
+            st.session_state.phone = norm
             st.info("We sent a 6-digit code to your phone. Use 123456 for the demo.")
             st.session_state.auth_step = "otp"
             st.rerun()
@@ -160,11 +186,11 @@ elif st.session_state.auth_step == "otp":
 elif st.session_state.auth_step == "dashboard":
     st.header("Dashboard")
 
-    # Sidebar policy controls for demo
+    # Sidebar policy controls for EWA-only demo
     st.sidebar.header("EWA Policy")
     cap_pct = st.sidebar.number_input("Cap percent of earned", 0.0, 100.0, 50.0, 5.0)
-    hard_cap = st.sidebar.number_input("Hard cap per month (₦)", 0, 50_000, 50_000, 5_000)
-    monthly_base = st.sidebar.number_input("Monthly base salary (₦)", 10_000, 1_000_000, 40_000, 5_000)
+    hard_cap = st.sidebar.number_input("Hard cap per month (₦)", 0, 500000, 50000, 5000)
+    monthly_base = st.sidebar.number_input("Monthly base salary (₦)", 10000, 1000000, 40000, 5000)
 
     # Date math
     now = datetime.now()
@@ -173,10 +199,10 @@ elif st.session_state.auth_step == "dashboard":
     worked = min(now.day, dim)
     payday = datetime(y, m, dim)
 
+    # Accrual and available
     accrued = (monthly_base / dim) * worked
     available = min(accrued * (cap_pct / 100.0), hard_cap)
 
-    # Visible, high-contrast headline
     st.markdown(f"<div class='owonow-h3'>Available Owo: <span class='owonow-ok'>{money(available)}</span></div>", unsafe_allow_html=True)
     st.progress(worked / dim)
     st.markdown(f"<div class='owonow-muted'>Next paycheck: {payday.strftime('%B %d, %Y')}</div>", unsafe_allow_html=True)
@@ -206,7 +232,7 @@ elif st.session_state.auth_step == "dashboard":
     if st.session_state.history:
         st.dataframe(pd.DataFrame(st.session_state.history), hide_index=True, use_container_width=True)
     else:
-        st.markdown(f"<div class='owonow-muted'>No withdrawals yet.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='owonow-muted'>No withdrawals yet.</div>", unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     if c1.button("Sign out"):
@@ -215,7 +241,7 @@ elif st.session_state.auth_step == "dashboard":
         st.rerun()
     if c2.button("Reset demo data"):
         st.session_state.history = []
-        save_tx_history([])  # clear CSV
+        save_tx_history([])
         st.success("History cleared.")
 
 # ---------- Footer ----------
